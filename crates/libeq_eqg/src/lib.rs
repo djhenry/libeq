@@ -1,8 +1,9 @@
-//! Identify resource formats found in EverQuest EQG archives and loose files.
+//! Identify EverQuest EQG resources and parse binary zone descriptors.
 //!
-//! This crate inspects headers only. Identification does not validate a resource's
-//! body or imply that its version is supported by a parser. Archive extraction
-//! belongs to `libeq_pfs`.
+//! [`identify`] inspects headers only; [`zone::parse`] validates binary EQGZ
+//! version 1 and 2 descriptors. Archive extraction belongs to `libeq_pfs`.
+
+pub mod zone;
 
 /// A recognized format header, including the raw version for binary resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

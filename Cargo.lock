@@ -740,6 +740,7 @@ dependencies = [
 name = "libeq_eqg"
 version = "0.5.0"
 dependencies = [
+ "libeq_pfs",
  "thiserror 2.0.18",
 ]
 
