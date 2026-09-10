@@ -90,3 +90,6 @@ pub fn identify(input: &[u8]) -> Result<Option<FormatHeader>, Error> {
     }
     Ok(None)
 }
+
+/// Raw terrain and model geometry.
+pub mod mesh;
