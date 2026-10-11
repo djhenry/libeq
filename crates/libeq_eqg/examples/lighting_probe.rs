@@ -37,12 +37,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .ok_or("offset overflow")?;
     assert_eq!(parsed.sample_count() as usize, count);
     assert_eq!(parsed.packed_bytes(), &input[8..end]);
-    assert!(
-        parsed
-            .packed_words()
-            .zip(input[8..end].chunks_exact(4))
-            .all(|(word, b)| word == u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    let words = parsed.packed_words();
+    assert_eq!(
+        words.len(),
+        count,
+        "iterator length differs from declared count"
     );
+    verify_packed_words(words, &input[8..end]);
     assert_eq!(parsed.trailing_data(), &input[end..]);
     println!(
         "samples={} packed_bytes={} trailing_bytes={} first={:?} last={:?}",
@@ -53,4 +54,43 @@ fn main() -> Result<(), Box<dyn Error>> {
         parsed.packed_words().next_back()
     );
     Ok(())
+}
+
+fn verify_packed_words(mut words: impl Iterator<Item = u32>, source: &[u8]) {
+    let chunks = source.chunks_exact(4);
+    assert!(chunks.remainder().is_empty(), "source word is incomplete");
+    for b in chunks {
+        assert_eq!(
+            words.next(),
+            Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+            "packed word differs or is missing"
+        );
+    }
+    assert!(words.next().is_none(), "extra packed words");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verify_packed_words;
+    const SOURCE: &[u8] = &[4, 3, 2, 1, 0xdd, 0xcc, 0xbb, 0xaa];
+    #[test]
+    fn verifies_complete_and_zero_word_streams() {
+        verify_packed_words([0x01020304, 0xaabbccdd].into_iter(), SOURCE);
+        verify_packed_words(std::iter::empty(), &[]);
+    }
+    #[test]
+    #[should_panic(expected = "packed word differs or is missing")]
+    fn rejects_empty_iterator_for_nonempty_source() {
+        verify_packed_words(std::iter::empty(), SOURCE);
+    }
+    #[test]
+    #[should_panic(expected = "packed word differs or is missing")]
+    fn rejects_short_iterator() {
+        verify_packed_words([0x01020304].into_iter(), SOURCE);
+    }
+    #[test]
+    #[should_panic(expected = "extra packed words")]
+    fn rejects_extra_iterator_word() {
+        verify_packed_words([0x01020304, 0xaabbccdd, 0x12345678].into_iter(), SOURCE);
+    }
 }
