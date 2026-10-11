@@ -6,14 +6,40 @@ conversion, rendering, and collision policy belong to the consuming application.
 
 ## Supported operations
 
-- `identify`: recognize EQGZ, EQGT, EQGM, EQTZP, and EQOBG signatures. Recognition
-  alone does not validate a resource body or establish support for its version.
+- `identify`: recognize EQGZ, EQGT, EQGM, EQTZP, EQOBG, and EQGP signatures. Recognition
+  alone does not validate a resource body or establish support for its encoding.
 - `zone::parse`: read binary EQGZ versions 1 and 2, including the string table,
   nullable model references, placements, variable v2 extension data, regions,
   lights, and any trailing bytes.
 - `mesh::parse`: read EQGT terrain and EQGM model geometry at versions 1, 2,
   and 3, retaining materials, raw properties, vertex attributes, triangles,
   version-2 secondary UV data, and any trailing bytes.
+
+- `lighting::parse` / `parse_with_limits`: read classic EQGP packed lighting
+  samples without assigning color, coverage, provider, or mesh-association meanings.
+
+The classic lighting layout is `EQGP`, a little-endian `u32` sample count, then
+that many little-endian packed `u32` words. It has no version word. The immutable
+`Lighting` view exposes `sample_count()`, borrowed `packed_bytes()`, checked
+`get(index)`, and an exact-size, double-ended `packed_words()` iterator. All bits
+are retained and input alignment is irrelevant. `trailing_data()` borrows any
+suffix without interpreting it. Zero-count records are valid.
+
+`lighting::Limits` defaults to 16,777,216 samples and 64 MiB of counted packed
+payload. Checked count/offset arithmetic and limits precede sample access. The
+limits do not bound a borrowed opaque suffix, the whole input file, archive
+extraction, or total process memory. Consumers can supply different explicit
+limits. Header recognition reports `Lighting { sample_count }` after all eight
+header bytes, without validating the sample payload. Headerless files and other
+lighting encodings are unsupported; a `.lit` filename alone establishes nothing.
+
+An optional inspection example extracts an explicitly selected archive member
+and verifies its borrowed raw view. It needs locally supplied input and does not
+choose a provider or interpret word semantics:
+
+```sh
+cargo run -p libeq_eqg --example lighting_probe -- ARCHIVE MEMBER
+```
 
 The zone parser checks byte bounds, declared record counts, model indices, and
 terminated string references. Names remain bytes rather than assuming an encoding.

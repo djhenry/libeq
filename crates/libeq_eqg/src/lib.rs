@@ -1,11 +1,13 @@
-//! Identify EverQuest EQG resources and parse binary zone descriptors.
+//! Identify EverQuest EQG resources and parse raw binary records.
 //!
 //! [`identify`] inspects headers only; [`zone::parse`] validates binary EQGZ
-//! version 1 and 2 descriptors. Archive extraction belongs to `libeq_pfs`.
+//! version 1 and 2 descriptors. [`mesh`] retains geometry; [`lighting`] reads
+//! classic versionless EQGP packed samples. Archive extraction belongs to `libeq_pfs`.
 
+pub mod lighting;
 pub mod zone;
 
-/// A recognized format header, including the raw version for binary resources.
+/// A recognized format header: raw versions for zones/meshes, a count for EQGP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatHeader {
     /// Binary zone descriptor (`EQGZ`).
@@ -14,6 +16,8 @@ pub enum FormatHeader {
     Terrain { version: u32 },
     /// Binary model mesh (`EQGM`).
     Model { version: u32 },
+    /// Classic versionless lighting samples (`EQGP`).
+    Lighting { sample_count: u32 },
     /// Text terrain project (`EQTZP`); no binary version is read.
     TerrainProject,
     /// Text object group (`EQOBG`); no binary version is read.
@@ -26,7 +30,7 @@ pub enum Error {
     #[error("truncated EQG header: expected at least {expected} bytes, got {actual}")]
     TruncatedHeader {
         /// Minimum total length needed for the signature, or eight bytes once a
-        /// complete binary signature establishes that a version must follow.
+        /// complete binary signature establishes that a header word must follow.
         expected: usize,
         /// Number of input bytes available.
         actual: usize,
@@ -35,12 +39,12 @@ pub enum Error {
 
 /// Identify a resource from its signature at byte zero.
 ///
-/// Binary versions are little-endian `u32` values and are returned unchanged,
-/// including unknown versions. Text signatures consume no version field.
+/// Zone/mesh versions and EQGP sample counts are little-endian `u32` values
+/// returned unchanged. EQGP has no version field. Text signatures have neither.
 /// Trailing data is ignored; this function does not validate a complete file.
 ///
 /// Returns `Ok(None)` for empty input or an unknown signature. A nonempty prefix
-/// of a known signature, or a binary signature with fewer than four version
+/// of a known signature, or a binary signature with fewer than four header-word
 /// bytes, returns [`Error::TruncatedHeader`]. Signatures are case-sensitive;
 /// whitespace and byte-order marks are not skipped.
 ///
@@ -55,7 +59,7 @@ pub fn identify(input: &[u8]) -> Result<Option<FormatHeader>, Error> {
         return Ok(None);
     }
 
-    const SIGNATURES: [&[u8]; 5] = [b"EQGZ", b"EQGT", b"EQGM", b"EQTZP", b"EQOBG"];
+    const SIGNATURES: [&[u8]; 6] = [b"EQGZ", b"EQGT", b"EQGM", b"EQTZP", b"EQOBG", b"EQGP"];
     for magic in SIGNATURES {
         if input.len() < magic.len() && magic.starts_with(input) {
             return Err(Error::TruncatedHeader {
@@ -72,20 +76,21 @@ pub fn identify(input: &[u8]) -> Result<Option<FormatHeader>, Error> {
         if magic == b"EQOBG" {
             return Ok(Some(FormatHeader::ObjectGroup));
         }
-        let version_bytes = input.get(4..8).ok_or(Error::TruncatedHeader {
+        let header_bytes = input.get(4..8).ok_or(Error::TruncatedHeader {
             expected: 8,
             actual: input.len(),
         })?;
-        let version = u32::from_le_bytes([
-            version_bytes[0],
-            version_bytes[1],
-            version_bytes[2],
-            version_bytes[3],
+        let word = u32::from_le_bytes([
+            header_bytes[0],
+            header_bytes[1],
+            header_bytes[2],
+            header_bytes[3],
         ]);
         return Ok(Some(match magic {
-            b"EQGZ" => FormatHeader::Zone { version },
-            b"EQGT" => FormatHeader::Terrain { version },
-            _ => FormatHeader::Model { version },
+            b"EQGZ" => FormatHeader::Zone { version: word },
+            b"EQGT" => FormatHeader::Terrain { version: word },
+            b"EQGP" => FormatHeader::Lighting { sample_count: word },
+            _ => FormatHeader::Model { version: word },
         }));
     }
     Ok(None)
