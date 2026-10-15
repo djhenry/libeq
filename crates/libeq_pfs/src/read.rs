@@ -408,7 +408,51 @@ impl<I: Iterator<Item = Result<Block, Error>>> Read for PfsFileReader<I> {
 }
 
 fn decompress_block(block: &Block) -> std::io::Result<Cursor<Vec<u8>>> {
-    let mut data = Vec::with_capacity(block.uncompressed_size as usize);
-    ZlibDecoder::new(&block.compressed_data[..]).read_to_end(&mut data)?;
+    let mut data = vec![0; block.uncompressed_size as usize];
+    let mut decoder = ZlibDecoder::new(&block.compressed_data[..]);
+    let size_mismatch = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "decompressed block size does not match declared size",
+        )
+    };
+    decoder.read_exact(&mut data).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::UnexpectedEof {
+            size_mismatch()
+        } else {
+            error
+        }
+    })?;
+    // Probe for excess output and propagate any decoder error.
+    if decoder.read(&mut [0])? != 0 {
+        return Err(size_mismatch());
+    }
     Ok(Cursor::new(data))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::{Compression, write::ZlibEncoder};
+
+    fn compressed_zero_size_block(data: &[u8]) -> Block {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(data).unwrap();
+        Block {
+            uncompressed_size: 0,
+            compressed_data: encoder.finish().unwrap(),
+        }
+    }
+
+    #[test]
+    fn accepts_zero_size_block_with_empty_stream() {
+        let actual = decompress_block(&compressed_zero_size_block(b"")).unwrap();
+        assert!(actual.into_inner().is_empty());
+    }
+
+    #[test]
+    fn rejects_zero_size_block_with_nonempty_stream() {
+        let error = decompress_block(&compressed_zero_size_block(b"x")).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
 }
