@@ -1,6 +1,8 @@
 //! Libraries and tools for working with EverQuest game data
 //!
 //! # Crates
+//! * `libeq_eqg` - Identify EQG resources and read raw binary zones, meshes and
+//!   classic EQGP lighting (optional `eqg` feature).
 //! * [libeq_wld](crates/libeq_wld) - Load `.wld` files.
 //! * [libeq_pfs](crates/libeq_pfs) - Create and extract `.s3d` archives.
 //!
@@ -43,3 +45,6 @@
 pub use libeq_pfs as pfs;
 #[cfg(feature = "wld")]
 pub use libeq_wld as wld;
+
+#[cfg(feature = "eqg")]
+pub use libeq_eqg as eqg;
