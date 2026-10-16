@@ -70,7 +70,8 @@ UV marker after triangles: marker 1 supplies secondary UVs for both kinds,
 and marker 2 does so only for terrain. Missing attributes remain optional.
 Triangle material values and flags are retained without assigning rendering or
 collision policy. Material property types and values remain raw words; type 2
-values are validated as string offsets. EQGM bone counts and trailing bytes
+values are validated as string offsets. A material's shader offset may be the
+all-ones null sentinel, reported as `None`. EQGM bone counts and trailing bytes
 are exposed, but skeletal records and animation are not decoded.
 
 ## Tests

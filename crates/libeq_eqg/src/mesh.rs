@@ -61,7 +61,9 @@ impl Mesh<'_> {
 pub struct Material {
     pub index: u32,
     pub name_offset: u32,
-    pub shader_offset: u32,
+    /// String offset, or `None` for the all-ones null sentinel (seen on property-less
+    /// collision materials).
+    pub shader_offset: Option<u32>,
     pub properties: Vec<Property>,
 }
 #[derive(Debug)]
@@ -196,7 +198,10 @@ pub fn parse(input: &[u8]) -> Result<Mesh<'_>, ParseError> {
     for _ in 0..materials {
         let [index, name_offset, shader_offset, count] = r.words("material")?;
         check(name_offset)?;
-        check(shader_offset)?;
+        let shader_offset = (shader_offset != u32::MAX).then_some(shader_offset);
+        if let Some(offset) = shader_offset {
+            check(offset)?;
+        }
         r.require(size(count, 12)?, "material properties")?;
         let mut properties = Vec::new();
         for _ in 0..count {

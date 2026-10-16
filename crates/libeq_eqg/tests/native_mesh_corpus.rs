@@ -72,7 +72,9 @@ fn parses_native_mesh_corpus() {
             }
             for material in &mesh.materials {
                 mesh.string(material.name_offset).unwrap();
-                mesh.string(material.shader_offset).unwrap();
+                if let Some(offset) = material.shader_offset {
+                    mesh.string(offset).unwrap();
+                }
             }
             // Independently measured fixture counts pin geometry boundaries and sentinels.
             let expected = match label.as_str() {

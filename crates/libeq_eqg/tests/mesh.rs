@@ -175,3 +175,27 @@ fn empty_meshes_and_string_suffixes() {
         Err(ParseError::InvalidStringReference { .. })
     ));
 }
+
+#[test]
+fn null_shader_offset_is_none_but_other_sentinels_are_rejected() {
+    // Material layout starts at byte 28: index, name, shader, property count.
+    let b = fixture(false, 1, 0);
+    assert_eq!(mesh::parse(&b).unwrap().materials[0].shader_offset, Some(2));
+    let mut null = b.clone();
+    null[36..40].copy_from_slice(&u32::MAX.to_le_bytes());
+    let parsed = mesh::parse(&null).unwrap();
+    assert_eq!(parsed.materials[0].shader_offset, None);
+    assert_eq!(parsed.materials[0].name_offset, 0);
+    // The sentinel is accepted for the shader only; other string references stay strict.
+    for offset in [32, 44, 52] {
+        let mut bad = b.clone();
+        bad[offset..offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(
+            matches!(
+                mesh::parse(&bad),
+                Err(ParseError::InvalidStringReference { .. })
+            ),
+            "string {offset}"
+        );
+    }
+}
