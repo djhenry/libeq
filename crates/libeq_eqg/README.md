@@ -33,6 +33,15 @@ limits. Header recognition reports `Lighting { sample_count }` after all eight
 header bytes, without validating the sample payload. Headerless files and other
 lighting encodings are unsupported; a `.lit` filename alone establishes nothing.
 
+Some observed `EQGP` resources contain fewer bytes than the header word would
+require under this classic layout. `identify` still returns the raw
+`Lighting { sample_count }` header, but `lighting::parse` rejects the short
+payload with `ParseError::Truncated`. The cause is not established: identification
+does not distinguish damaged classic data from another encoding sharing the
+signature. Do not treat header recognition as a successful parse, pad the missing
+words, or infer an alternate layout. This reader supports the classic counted-word
+layout only; broader lighting support requires separate format evidence.
+
 An optional inspection example extracts an explicitly selected archive member
 and verifies its borrowed raw view. It needs locally supplied input and does not
 choose a provider or interpret word semantics:

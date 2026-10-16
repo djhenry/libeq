@@ -57,12 +57,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn verify_packed_words(mut words: impl Iterator<Item = u32>, source: &[u8]) {
-    let chunks = source.chunks_exact(4);
-    assert!(chunks.remainder().is_empty(), "source word is incomplete");
+    let (chunks, remainder) = source.as_chunks::<4>();
+    assert!(remainder.is_empty(), "source word is incomplete");
     for b in chunks {
         assert_eq!(
             words.next(),
-            Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+            Some(u32::from_le_bytes(*b)),
             "packed word differs or is missing"
         );
     }

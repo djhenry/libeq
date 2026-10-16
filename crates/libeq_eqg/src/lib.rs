@@ -16,7 +16,7 @@ pub enum FormatHeader {
     Terrain { version: u32 },
     /// Binary model mesh (`EQGM`).
     Model { version: u32 },
-    /// Classic versionless lighting samples (`EQGP`).
+    /// An `EQGP` signature and its raw count word; payload support is not established.
     Lighting { sample_count: u32 },
     /// Text terrain project (`EQTZP`); no binary version is read.
     TerrainProject,
@@ -39,9 +39,13 @@ pub enum Error {
 
 /// Identify a resource from its signature at byte zero.
 ///
-/// Zone/mesh versions and EQGP sample counts are little-endian `u32` values
-/// returned unchanged. EQGP has no version field. Text signatures have neither.
+/// Zone/mesh versions and the classic EQGP sample count are little-endian `u32`
+/// header words returned unchanged. The classic EQGP layout has no version field.
+/// Text signatures have neither.
 /// Trailing data is ignored; this function does not validate a complete file.
+/// In particular, an EQGP header may be recognized even when [`lighting::parse`]
+/// rejects its payload. Identification cannot distinguish a damaged classic
+/// record from an unsupported encoding using the same signature.
 ///
 /// Returns `Ok(None)` for empty input or an unknown signature. A nonempty prefix
 /// of a known signature, or a binary signature with fewer than four header-word

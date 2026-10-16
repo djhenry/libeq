@@ -1,5 +1,7 @@
 //! Classic versionless EQGP packed lighting samples, retained without interpretation.
 //! Headerless data, color conventions and resource association are not inferred.
+//! An EQGP header alone does not establish this payload layout; short counted
+//! payloads are rejected without guessing whether they are damaged or another encoding.
 
 /// Bounds on counted packed words, not the total file or process memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,8 +57,10 @@ impl<'a> Lighting<'a> {
         &self,
     ) -> impl ExactSizeIterator<Item = u32> + DoubleEndedIterator + Clone + 'a {
         self.samples
-            .chunks_exact(4)
-            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
     }
     /// Read one raw word; out-of-range and overflowing indices return `None`.
     pub fn get(&self, index: usize) -> Option<u32> {
