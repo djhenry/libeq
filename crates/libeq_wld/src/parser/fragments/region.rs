@@ -29,7 +29,7 @@ pub struct Region {
     /// bit 3 - has REGIONFOG
     /// bit 4 - has ENABLEGOURAUD2
     /// bit 5 - has ENCODEDVISIBILITY
-    /// ...
+    /// bit 6 - has an additional fragment reference after USERDATA
     /// bit 7 (windcatcher) - If set then `pvs` contains u8 entries (more common).
     /// bit 8 - ??? seems to mean mesh_reference exists?
     ///
@@ -101,6 +101,10 @@ pub struct Region {
 
     /// USERDATA %s
     user_data: Vec<u8>,
+
+    /// Additional reference enabled by flag 0x40, after USERDATA and before `mesh_reference`.
+    /// The referenced fragment type is not yet established.
+    pub reference_0x40: Option<FragmentRef<i32>>,
 
     /// This does not appear in WLDCOM.
     /// WINDCATCHER:
@@ -176,6 +180,12 @@ impl FragmentParser for Region {
         let (i, user_data_size) = le_u32(i)?;
         let (i, user_data) = count(le_u8, user_data_size as usize).parse(i)?;
 
+        let (i, reference_0x40) = if flags.has_reference_0x40() {
+            FragmentRef::parse(i).map(|(rem, f)| (rem, Some(f)))?
+        } else {
+            (i, None)
+        };
+
         let (i, mesh_reference) = if flags.has_mesh_reference() {
             FragmentRef::parse(i).map(|(rem, f)| (rem, Some(f)))?
         } else {
@@ -208,6 +218,7 @@ impl FragmentParser for Region {
                 reverb_offset,
                 user_data_size,
                 user_data,
+                reference_0x40,
                 mesh_reference,
             },
         ))
@@ -281,6 +292,10 @@ impl Fragment for Region {
             &self.user_data_size.to_le_bytes()[..],
             &self.user_data[..],
             &self
+                .reference_0x40
+                .as_ref()
+                .map_or(vec![], |r| r.to_bytes())[..],
+            &self
                 .mesh_reference
                 .as_ref()
                 .map_or(vec![], |m| m.to_bytes())[..],
@@ -323,6 +338,7 @@ impl RegionFlags {
     const REGION_FOG: u32 = 0x08;
     const ENABLE_GOURAUD2: u32 = 0x10;
     const ENCODED_VISIBILITY: u32 = 0x20;
+    const HAS_REFERENCE_0X40: u32 = 0x40;
     //TODO: Verify these
     const HAS_BYTE_ENTRIES: u32 = 0x80;
     const HAS_MESH_REFERENCE: u32 = 0x100;
@@ -358,6 +374,10 @@ impl RegionFlags {
 
     pub fn encoded_visibility(&self) -> bool {
         self.0 & Self::ENCODED_VISIBILITY == Self::ENCODED_VISIBILITY
+    }
+
+    pub fn has_reference_0x40(&self) -> bool {
+        self.0 & Self::HAS_REFERENCE_0X40 == Self::HAS_REFERENCE_0X40
     }
 
     //TODO: Verify this
@@ -890,6 +910,7 @@ mod tests {
             reverb_offset: None,
             user_data_size: 0,
             user_data: vec![],
+            reference_0x40: None,
             mesh_reference: None,
         }
     }
@@ -928,6 +949,7 @@ mod tests {
             reverb_offset: None,
             user_data_size: 0,
             user_data: vec![],
+            reference_0x40: None,
             mesh_reference: Some(FragmentRef::new(132)),
         }
     }
@@ -967,6 +989,7 @@ mod tests {
             reverb_offset: None,
             user_data_size: 0,
             user_data: vec![],
+            reference_0x40: None,
             mesh_reference: None,
         }
     }
@@ -1036,6 +1059,7 @@ mod tests {
             reverb_offset: None,
             user_data_size: 0,
             user_data: vec![],
+            reference_0x40: None,
             mesh_reference: None,
         }
     }
