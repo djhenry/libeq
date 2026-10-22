@@ -6,7 +6,7 @@ conversion, rendering, and collision policy belong to the consuming application.
 
 ## Supported operations
 
-- `identify`: recognize EQGZ, EQGT, EQGM, EQTZP, EQOBG, and EQGP signatures. Recognition
+- `identify`: recognize EQGZ, EQGT, EQGM, EQTZP, EQOBG, EQGP, and EQLOD signatures. Recognition
   alone does not validate a resource body or establish support for its encoding.
 - `zone::parse`: read binary EQGZ versions 1 and 2, including the string table,
   nullable model references, placements, variable v2 extension data, regions,
@@ -17,6 +17,42 @@ conversion, rendering, and collision policy belong to the consuming application.
 
 - `lighting::parse` / `parse_with_limits`: read classic EQGP packed lighting
   samples without assigning color, coverage, provider, or mesh-association meanings.
+
+`lod::parse` reads raw `EQLOD` text as an immutable borrowed `LodList`.
+`source()` returns the original bytes; allocation-free `records()` yields physical
+body rows in source order with zero-based byte offsets, one-based line numbers
+(the header is line 1), borrowed `raw_line`, and `RecordKind`. Each iterator call
+starts a new linear pass. Parsing and iteration allocate no record/name arrays;
+the caller still owns input storage, extraction, and repeated-pass work.
+
+The header must be exactly `EQLOD` at byte zero followed by CRLF or LF. Bare LF
+is a library extension. A body can end without LF. A row excludes LF and at most
+one trailing CR, including at EOF; embedded CR stays raw. A terminal LF creates
+no phantom row, while actual blank rows are retained as `Unknown`. The reader
+explicitly rejects any body NUL at its original byte offset rather than truncating
+at it. Invalid magic and missing/invalid header endings are distinct from body
+NUL errors; header errors take precedence. These are library framing rules, not
+a claim of native-runtime equivalence.
+
+ASCII-case-insensitive `LOD,` tags yield `Level { model, raw_number }`. The first
+following comma divides the raw model bytes from the entire numeric suffix,
+including further commas. Without that comma, `raw_number` is `None`; with an
+empty suffix it is `Some(b"")`. Negative, malformed, nonfinite-looking, leading-zero,
+and whitespace-containing tokens remain unvalidated bytes. `COL,` yields
+`Collision` with the entire remainder, including commas. Tags are not trimmed;
+other rows are `Unknown` with their bytes available in `raw_line`. Empty names,
+non-UTF-8 names, name case, duplicate levels/collisions and original order remain
+unchanged. Standard byte-slice `eq_ignore_ascii_case` can compare names without
+copying or normalizing them.
+
+This raw inspection prerequisite does not convert numbers, supply defaults,
+report semantic oddities, resolve models, choose levels, interpret thresholds or
+substitute collision geometry. Numeric validation and oddity diagnostics remain
+separate work. The added `FormatHeader::LodList` variant expands an exhaustive
+public enum: downstream exhaustive matches need updating when adopting this
+revision. Identification checks only the signature, even if `lod::parse` would
+reject the framing. Archive member extensions do not reliably identify content;
+inspect the header before dispatching a model-style member to `mesh::parse`.
 
 The classic lighting layout is `EQGP`, a little-endian `u32` sample count, then
 that many little-endian packed `u32` words. It has no version word. The immutable
