@@ -45,10 +45,19 @@ non-UTF-8 names, name case, duplicate levels/collisions and original order remai
 unchanged. Standard byte-slice `eq_ignore_ascii_case` can compare names without
 copying or normalizing them.
 
-This raw inspection prerequisite does not convert numbers, supply defaults,
-report semantic oddities, resolve models, choose levels, interpret thresholds or
-substitute collision geometry. Numeric validation and oddity diagnostics remain
-separate work. The added `FormatHeader::LodList` variant expands an exhaustive
+Raw inspection does not convert numbers, supply defaults, report semantic
+oddities, resolve models, choose levels, interpret thresholds or substitute
+collision geometry. Optional `lod::parse_number(raw_number)` admits a complete
+ASCII decimal with optional sign, decimal point and exponent, then converts via
+`f64` to finite `f32`. It distinguishes `Missing`, `Empty`, `InvalidSyntax` and
+`NonFinite`, rejects whitespace and suffix junk, and preserves finite negatives,
+signed zero, subnormals and underflow to signed zero. It allocates nothing and
+leaves all raw rows unchanged. The intermediate can double-round: the token
+`1.0000000596046448` yields `0x3f800000`, versus `0x3f800001` from direct `f32`
+parsing. This is explicit library admission, not native CRT parity or numeric
+units/ordering policy; oddity diagnostics remain separate work.
+
+The added `FormatHeader::LodList` variant expands an exhaustive
 public enum: downstream exhaustive matches need updating when adopting this
 revision. Identification checks only the signature, even if `lod::parse` would
 reject the framing. Archive member extensions do not reliably identify content;
