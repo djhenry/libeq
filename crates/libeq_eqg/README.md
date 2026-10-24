@@ -15,8 +15,66 @@ conversion, rendering, and collision policy belong to the consuming application.
   and 3, retaining materials, raw properties, vertex attributes, triangles,
   version-2 secondary UV data, and any trailing bytes.
 
+- `terrain_dat::parse_packed_v20` / `parse_packed_v20_with_limits`: read the
+  explicitly selected packed-project DAT v20 envelope with caller-supplied
+  quads per tile, retaining all counted raw records.
 - `lighting::parse` / `parse_with_limits`: read classic EQGP packed lighting
   samples without assigning color, coverage, provider, or mesh-association meanings.
+
+The packed DAT reader has no magic-based identification or auto-detection. It
+requires binary version 20 and a positive caller-supplied `quads_per_tile` (`q`),
+independent of any text-project VERSION value. Rejecting zero is this library's
+admission policy. It does not infer a dimension, resolve a project name or accept
+other DAT families, individual tile envelopes, or versions 19/21.
+
+The header retains three raw little-endian words (including version), a
+NUL-terminated name and a tile count. Each tile retains two coordinate words,
+an identifier, three raw word grids of `(q + 1)^2` entries, `q^2` quad bytes,
+two prefix words, layers and four counted sections. Every layer has a name;
+only nonfirst layers have a resolution word and its square byte payload.
+`None` for the first layer differs from `Some` with resolution zero later.
+Sections A–D retain these ordered layouts without assigning semantic roles:
+
+| Section | Record after its containing count |
+|---|---|
+| A | name, name, 44-byte blob, byte |
+| B | name, raw word, name, 56-byte blob |
+| C | name, name, byte, 48-byte blob |
+| D | name, 48-byte blob |
+
+Names exclude their terminators and retain byte offsets, empty/high-byte names,
+order and duplicates. Header/tile/record source ranges include their serialized
+content; record ranges exclude the containing count, tile ranges include all
+five counts, and coverage ranges include the resolution word. All grids and
+blobs borrow the original potentially unaligned bytes; floating-point bit
+patterns are not expanded, normalized or checked for finiteness.
+
+`PackedV20` privately owns descriptor vectors. `source()` preserves the complete
+input, `consumed_len()` ends after the final counted tile, and `trailing_data()`
+borrows the opaque suffix. Payload borrows can outlive the document; descriptor
+slices borrow it. The parser validates the complete stream before reserving any
+descriptors, then constructs them with fallible reservations using the same
+grammar. Successful parsing allocates descriptors and is not allocation-free.
+
+`terrain_dat::Limits` has four independent cumulative limits:
+
+| Resource | Default |
+|---|---:|
+| Tiles, bounding tile containers | 4,096 |
+| Layers plus A–D records across all tiles | 262,144 |
+| Name bytes, including every NUL and the header name | 8 MiB |
+| Entire consumed prefix, including headers, counts, names and payloads | 128 MiB |
+
+Both passes use fresh counters against the same limits. Counts, minimum byte
+requirements and checked grid/map sizes are validated before count-driven loops
+or reservations. Name searches are bounded by remaining input and both remaining
+name/prefix budgets before scanning. Zero-tile documents charge no hypothetical
+grid payload. Limits exclude opaque suffix bytes, input ownership, extraction,
+allocator overhead, repeated caller iteration and total process memory.
+
+This is raw byte-boundary decoding, not terrain meshing, material/provider
+selection, topology, holes, coordinate conversion, water/collision policy,
+consumer defaults or runtime admission.
 
 The classic lighting layout is `EQGP`, a little-endian `u32` sample count, then
 that many little-endian packed `u32` words. It has no version word. The immutable
