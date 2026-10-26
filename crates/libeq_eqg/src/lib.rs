@@ -3,10 +3,12 @@
 //! [`identify`] inspects headers only; [`zone::parse`] validates binary EQGZ
 //! version 1 and 2 descriptors. [`mesh`] retains geometry; [`lighting`] reads
 //! classic versionless EQGP packed samples. [`terrain_dat`] reads explicitly
-//! selected packed DAT v20 records. Archive extraction belongs to `libeq_pfs`.
+//! selected packed DAT v20 records; [`terrain_project`] borrows EQTZP text tokens
+//! without interpreting fields. Archive extraction belongs to `libeq_pfs`.
 
 pub mod lighting;
 pub mod terrain_dat;
+pub mod terrain_project;
 pub mod zone;
 
 /// A recognized format header: raw versions for zones/meshes, a count for EQGP.

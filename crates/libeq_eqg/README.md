@@ -15,6 +15,8 @@ conversion, rendering, and collision policy belong to the consuming application.
   and 3, retaining materials, raw properties, vertex attributes, triangles,
   version-2 secondary UV data, and any trailing bytes.
 
+- `terrain_project::parse`: borrow EQTZP project-text tokens and an explicit
+  first-NUL boundary without interpreting fields or loading terrain.
 - `terrain_dat::parse_packed_v20` / `parse_packed_v20_with_limits`: read the
   explicitly selected packed-project DAT v20 envelope with caller-supplied
   quads per tile, retaining all counted raw records.
@@ -75,6 +77,23 @@ allocator overhead, repeated caller iteration and total process memory.
 This is raw byte-boundary decoding, not terrain meshing, material/provider
 selection, topology, holes, coordinate conversion, water/collision policy,
 consumer defaults or runtime admission.
+
+The immutable `terrain_project::Project` preserves the complete `source()` and
+iterates `Token { byte_offset, raw, bytes }`, including the magic token, in source
+order. Leading TAB/LF/VT/FF/CR/SPACE are skipped, but only SPACE/TAB/LF separate
+collected tokens. `raw` retains trailing CR/VT/FF; `bytes` trims the six whitespace
+bytes. Interior CR/VT/FF, high bytes, punctuation, quotes and repeated or unknown
+keys remain opaque. There is no UTF-8 requirement, grouping or token truncation.
+
+Parsing requires an exact first `EQTZP` token at byte zero, not just the signature
+prefix recognized by `identify`. Bare EOF or NUL after the magic is valid; no
+newline, version or metadata fields are required. `nul_offset()` identifies the
+first terminator; `trailing_data()` excludes it and distinguishes no NUL (`None`)
+from a terminal NUL (`Some(b"")`). The suffix is not interpreted as inline data.
+Parsing and each token pass allocate nothing, take linear time and use O(1)
+extra storage. Caller-owned input, extraction and repeated passes are outside
+that bound. Numeric conversion, defaults, field validation, dependency discovery,
+DAT decoding and terrain/runtime admission remain consumer work.
 
 The classic lighting layout is `EQGP`, a little-endian `u32` sample count, then
 that many little-endian packed `u32` words. It has no version word. The immutable
