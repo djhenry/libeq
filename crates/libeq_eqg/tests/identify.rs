@@ -32,6 +32,7 @@ fn identifies_text_signatures_without_a_binary_version() {
     for (input, expected) in [
         (b"EQTZP".as_slice(), FormatHeader::TerrainProject),
         (b"EQOBG".as_slice(), FormatHeader::ObjectGroup),
+        (b"EQLOD".as_slice(), FormatHeader::LodList),
     ] {
         assert_eq!(identify(input), Ok(Some(expected)));
         let mut body = input.to_vec();
@@ -48,6 +49,7 @@ fn every_incomplete_nonempty_header_prefix_is_truncated() {
         b"EQGM\x03\0\0\0".as_slice(),
         b"EQTZP".as_slice(),
         b"EQOBG".as_slice(),
+        b"EQLOD".as_slice(),
     ] {
         for actual in 1..complete.len() {
             assert!(
@@ -82,4 +84,39 @@ fn unrecognized_data_is_not_a_truncation_error() {
     ] {
         assert_eq!(identify(input), Ok(None), "{input:?}");
     }
+}
+
+#[test]
+fn identifies_lod_signature_before_body_support() {
+    assert!(
+        identify(b"EQLOD\r\nLOD,EXAMPLE,00300\r\n")
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn lod_identification_does_not_validate_text_framing_or_numbers() {
+    for input in [
+        b"EQLOD".as_slice(),
+        b"EQLODinvalid\0ending",
+        b"EQLOD\nLOD,x,NaN",
+    ] {
+        assert_eq!(identify(input), Ok(Some(FormatHeader::LodList)));
+    }
+    for input in [
+        b"eqLOD\n".as_slice(),
+        b" EQLOD\n",
+        b"\xef\xbb\xbfEQLOD\n",
+        b"EQLX",
+    ] {
+        assert_eq!(identify(input), Ok(None));
+    }
+    assert_eq!(
+        identify(b"EQLO"),
+        Err(Error::TruncatedHeader {
+            expected: 5,
+            actual: 4
+        })
+    );
 }
