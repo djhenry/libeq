@@ -1,4 +1,4 @@
-//! Borrowed raw EQLOD rows, without model selection or numeric interpretation.
+//! Borrowed raw EQLOD rows with optional strict decimal validation.
 //!
 //! Names, number tokens, unknown rows, and duplicates remain unchanged. A parsed
 //! list establishes framing only; it does not admit names or numbers for runtime use.
@@ -158,4 +158,90 @@ pub fn parse(input: &[u8]) -> Result<LodList<'_>, ParseError> {
         source: input,
         body: &input[header_length..],
     })
+}
+
+/// A failure of the optional strict decimal admission policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum NumberError {
+    #[error("missing LOD number")]
+    Missing,
+    #[error("empty LOD number")]
+    Empty,
+    #[error("invalid complete ASCII decimal LOD number")]
+    InvalidSyntax,
+    #[error("LOD number is nonfinite after conversion to f32")]
+    NonFinite,
+}
+
+/// Validate a complete ASCII decimal token and convert through `f64` to finite `f32`.
+///
+/// The grammar is `[+-]?(digits+('.'digits*)?|'.'digits+)([eE][+-]?digits+)?`,
+/// where digits are ASCII 0–9. No whitespace, suffix, hexadecimal, NaN/infinity
+/// spelling, locale conversion or default is accepted. Missing and present-empty
+/// tokens have distinct errors. Finite negative values, signed zero, subnormals
+/// and underflow to signed zero are retained; no positivity or ordering rule applies.
+///
+/// The `f64` intermediate can double-round: `1.0000000596046448` produces bits
+/// `0x3f800000`, while direct decimal-to-`f32` parsing produces `0x3f800001`.
+/// This allocation-free library admission helper does not reproduce native CRT
+/// conversion or assign units. [`parse`] and [`LodList::records`] never call it;
+/// callers retain the original token and row context regardless of the result.
+///
+/// ```
+/// use libeq_eqg::lod::{parse_number, NumberError};
+/// assert_eq!(parse_number(Some(b"-.5"))?, -0.5);
+/// assert_eq!(parse_number(None), Err(NumberError::Missing));
+/// assert_eq!(parse_number(Some(b"")), Err(NumberError::Empty));
+/// # Ok::<(), NumberError>(())
+/// ```
+pub fn parse_number(raw_number: Option<&[u8]>) -> Result<f32, NumberError> {
+    let token = raw_number.ok_or(NumberError::Missing)?;
+    if token.is_empty() {
+        return Err(NumberError::Empty);
+    }
+    let mut index = 0;
+    if matches!(token.get(index), Some(b'+' | b'-')) {
+        index += 1;
+    }
+    let start = index;
+    while token.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let mut has_digit = index > start;
+    if token.get(index) == Some(&b'.') {
+        index += 1;
+        let start = index;
+        while token.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        has_digit |= index > start;
+    }
+    if !has_digit {
+        return Err(NumberError::InvalidSyntax);
+    }
+    if matches!(token.get(index), Some(b'e' | b'E')) {
+        index += 1;
+        if matches!(token.get(index), Some(b'+' | b'-')) {
+            index += 1;
+        }
+        let start = index;
+        while token.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        if index == start {
+            return Err(NumberError::InvalidSyntax);
+        }
+    }
+    if index != token.len() {
+        return Err(NumberError::InvalidSyntax);
+    }
+    let text = std::str::from_utf8(token).map_err(|_| NumberError::InvalidSyntax)?;
+    let wide = text
+        .parse::<f64>()
+        .map_err(|_| NumberError::InvalidSyntax)?;
+    let value = wide as f32;
+    if !value.is_finite() {
+        return Err(NumberError::NonFinite);
+    }
+    Ok(value)
 }

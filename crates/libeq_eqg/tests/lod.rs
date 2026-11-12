@@ -258,8 +258,18 @@ fn public_parse_and_record_iteration_allocate_nothing_on_the_counted_thread() {
         control_allocations > 0,
         "counter must detect a real allocation"
     );
+    let number_cases: [Option<&[u8]>; 7] = [
+        Some(b"125e-2"),
+        Some(b"-0"),
+        None,
+        Some(b""),
+        Some(b"bad"),
+        Some(b"1e39"),
+        Some(b"-1e-999"),
+    ];
     ALLOCATIONS.with(|count| count.set(0));
     COUNTING.with(|enabled| enabled.set(true));
+    let parsed_numbers = number_cases.map(lod::parse_number);
     let parsed = lod::parse(b"EQLOD\r\nLOD,A\nLOD,B,\nLOD,C,NaN,extra\nCOL,X,Y\n\nUnknown");
     let count = parsed.as_ref().map(|list| list.records().count());
     let source_length = parsed.as_ref().map(|list| list.source().len());
@@ -267,7 +277,171 @@ fn public_parse_and_record_iteration_allocate_nothing_on_the_counted_thread() {
     COUNTING.with(|enabled| enabled.set(false));
     let allocations = ALLOCATIONS.with(Cell::get);
     assert_eq!(allocations, 0);
+    assert_eq!(
+        parsed_numbers.map(|value| value.map(f32::to_bits)),
+        [
+            Ok(0x3fa0_0000),
+            Ok(0x8000_0000),
+            Err(lod::NumberError::Missing),
+            Err(lod::NumberError::Empty),
+            Err(lod::NumberError::InvalidSyntax),
+            Err(lod::NumberError::NonFinite),
+            Ok(0x8000_0000),
+        ]
+    );
     assert_eq!(count.unwrap(), 6);
     assert_eq!(source_length.unwrap(), 52);
     assert!(matches!(error, Err(ParseError::InteriorNul { offset: 11 })));
+}
+
+#[test]
+fn number_complete_decimal_forms_have_literal_binary32_values() {
+    for (raw, bits) in [
+        (b"1".as_slice(), 0x3f80_0000),
+        (b"01", 0x3f80_0000),
+        (b"+1.0", 0x3f80_0000),
+        (b"1.", 0x3f80_0000),
+        (b".5", 0x3f00_0000),
+        (b"-.5", 0xbf00_0000),
+        (b"1.25", 0x3fa0_0000),
+        (b"125e-2", 0x3fa0_0000),
+        (b"-2.5E+1", 0xc1c8_0000),
+        (b"1.e+2", 0x42c8_0000),
+        (b"000.0012500e+3", 0x3fa0_0000),
+    ] {
+        assert_eq!(
+            lod::parse_number(Some(raw)).unwrap().to_bits(),
+            bits,
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn number_missing_empty_and_invalid_syntax_are_distinct() {
+    use lod::NumberError;
+    assert_eq!(lod::parse_number(None), Err(NumberError::Missing));
+    assert_eq!(lod::parse_number(Some(b"")), Err(NumberError::Empty));
+    for raw in [
+        b" ".as_slice(),
+        b" 1",
+        b"1 ",
+        b"\t1",
+        b"1\r",
+        b"1\n",
+        b"1\0",
+        b"\xff",
+        b"\xc2\xa01",
+        b"NaN",
+        b"nan",
+        b"Inf",
+        b"+inf",
+        b"-Infinity",
+        b"0x1p0",
+        b"1_000",
+        b"1,2",
+        b"1junk",
+        b"+",
+        b"-",
+        b".",
+        b"+.",
+        b".e2",
+        b"1..0",
+        b"1e",
+        b"1e+",
+        b"1e--2",
+        b"e2",
+        b"++1",
+        b"+-1",
+    ] {
+        assert_eq!(
+            lod::parse_number(Some(raw)),
+            Err(NumberError::InvalidSyntax),
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn number_overflow_at_either_float_width_is_nonfinite() {
+    for raw in [
+        b"1e39".as_slice(),
+        b"-1e39",
+        b"1e999",
+        b"-1e999",
+        b"3.4028236e38",
+        b"-3.4028236e38",
+    ] {
+        assert_eq!(
+            lod::parse_number(Some(raw)),
+            Err(lod::NumberError::NonFinite),
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn number_finite_extremes_signed_zero_subnormals_and_underflow_keep_bits() {
+    for (raw, bits) in [
+        (b"0".as_slice(), 0),
+        (b"+0", 0),
+        (b"-0", 0x8000_0000),
+        (b"-0.000e99", 0x8000_0000),
+        (b"3.4028234663852886e38", 0x7f7f_ffff),
+        (b"-3.4028234663852886e38", 0xff7f_ffff),
+        (b"3.4028235e38", 0x7f7f_ffff),
+        (b"1.401298464324817e-45", 1),
+        (b"-1.401298464324817e-45", 0x8000_0001),
+        (b"1e-46", 0),
+        (b"-1e-46", 0x8000_0000),
+        (b"1e-999", 0),
+        (b"-1e-999", 0x8000_0000),
+    ] {
+        assert_eq!(
+            lod::parse_number(Some(raw)).unwrap().to_bits(),
+            bits,
+            "{raw:?}"
+        );
+    }
+}
+
+#[test]
+fn number_documented_f64_intermediate_can_double_round() {
+    let raw = b"1.0000000596046448";
+    assert_eq!(lod::parse_number(Some(raw)).unwrap().to_bits(), 0x3f80_0000);
+    assert_eq!(
+        "1.0000000596046448".parse::<f32>().unwrap().to_bits(),
+        0x3f80_0001
+    );
+}
+
+#[test]
+fn number_opt_in_validation_does_not_change_raw_rows() {
+    let input = b"EQLOD\nLOD,A\nLOD,B,\nLOD,C, -1\nLOD,D,-2\nLOD,E,1e39\nCOL,X,Y";
+    let list = lod::parse(input).unwrap();
+    let before: Vec<_> = list.records().collect();
+    let results: Vec<_> = before
+        .iter()
+        .filter_map(|row| match row.kind {
+            RecordKind::Level { raw_number, .. } => {
+                Some(lod::parse_number(raw_number).map(f32::to_bits))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        results,
+        [
+            Err(lod::NumberError::Missing),
+            Err(lod::NumberError::Empty),
+            Err(lod::NumberError::InvalidSyntax),
+            Ok(0xc000_0000),
+            Err(lod::NumberError::NonFinite),
+        ]
+    );
+    assert_eq!(list.records().collect::<Vec<_>>(), before);
+    assert_eq!(list.source(), input);
+    assert_eq!(list.source().as_ptr(), input.as_ptr());
+    assert_eq!(before[2].raw_line, b"LOD,C, -1");
+    assert_eq!(before[5].kind, RecordKind::Collision { model: b"X,Y" });
 }
