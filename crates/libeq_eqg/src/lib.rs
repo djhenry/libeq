@@ -4,11 +4,12 @@
 //! version 1 and 2 descriptors. [`mesh`] retains geometry; [`lighting`] reads
 //! classic versionless EQGP packed samples. [`lod`] retains raw EQLOD text rows
 //! without numeric interpretation and [`terrain_project`] borrows EQTZP text
-//! tokens without interpreting project fields. Archive extraction belongs to
-//! `libeq_pfs`.
+//! tokens without interpreting project fields. [`terrain_dat`] reads explicitly
+//! selected packed DAT v20 records. Archive extraction belongs to `libeq_pfs`.
 
 pub mod lighting;
 pub mod lod;
+pub mod terrain_dat;
 pub mod terrain_project;
 pub mod zone;
 
