@@ -1,10 +1,12 @@
-//! Identify EverQuest EQG resources and parse raw binary records.
+//! Identify EverQuest EQG resources and read raw binary records and EQLOD text.
 //!
 //! [`identify`] inspects headers only; [`zone::parse`] validates binary EQGZ
 //! version 1 and 2 descriptors. [`mesh`] retains geometry; [`lighting`] reads
-//! classic versionless EQGP packed samples. Archive extraction belongs to `libeq_pfs`.
+//! classic versionless EQGP packed samples. [`lod`] retains raw text rows without
+//! numeric interpretation. Archive extraction belongs to `libeq_pfs`.
 
 pub mod lighting;
+pub mod lod;
 pub mod zone;
 
 /// A recognized format header: raw versions for zones/meshes, a count for EQGP.
@@ -22,6 +24,8 @@ pub enum FormatHeader {
     TerrainProject,
     /// Text object group (`EQOBG`); no binary version is read.
     ObjectGroup,
+    /// Text LOD list (`EQLOD`); no numeric or body validation is performed.
+    LodList,
 }
 
 /// A recognized header prefix whose remaining bytes are missing.
@@ -63,7 +67,9 @@ pub fn identify(input: &[u8]) -> Result<Option<FormatHeader>, Error> {
         return Ok(None);
     }
 
-    const SIGNATURES: [&[u8]; 6] = [b"EQGZ", b"EQGT", b"EQGM", b"EQTZP", b"EQOBG", b"EQGP"];
+    const SIGNATURES: [&[u8]; 7] = [
+        b"EQGZ", b"EQGT", b"EQGM", b"EQTZP", b"EQOBG", b"EQGP", b"EQLOD",
+    ];
     for magic in SIGNATURES {
         if input.len() < magic.len() && magic.starts_with(input) {
             return Err(Error::TruncatedHeader {
@@ -79,6 +85,9 @@ pub fn identify(input: &[u8]) -> Result<Option<FormatHeader>, Error> {
         }
         if magic == b"EQOBG" {
             return Ok(Some(FormatHeader::ObjectGroup));
+        }
+        if magic == b"EQLOD" {
+            return Ok(Some(FormatHeader::LodList));
         }
         let header_bytes = input.get(4..8).ok_or(Error::TruncatedHeader {
             expected: 8,
