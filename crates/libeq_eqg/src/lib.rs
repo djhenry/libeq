@@ -1,12 +1,15 @@
-//! Identify EverQuest EQG resources and read raw binary records and EQLOD text.
+//! Identify EverQuest EQG resources and read raw binary records and text rows.
 //!
 //! [`identify`] inspects headers only; [`zone::parse`] validates binary EQGZ
 //! version 1 and 2 descriptors. [`mesh`] retains geometry; [`lighting`] reads
-//! classic versionless EQGP packed samples. [`lod`] retains raw text rows without
-//! numeric interpretation. Archive extraction belongs to `libeq_pfs`.
+//! classic versionless EQGP packed samples. [`lod`] retains raw EQLOD text rows
+//! without numeric interpretation and [`terrain_project`] borrows EQTZP text
+//! tokens without interpreting project fields. Archive extraction belongs to
+//! `libeq_pfs`.
 
 pub mod lighting;
 pub mod lod;
+pub mod terrain_project;
 pub mod zone;
 
 /// A recognized format header: raw versions for zones/meshes, a count for EQGP.
